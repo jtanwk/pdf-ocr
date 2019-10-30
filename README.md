@@ -78,7 +78,6 @@ root
     └── errors.csv - lists any errors occured while running parse_table.py
 ├── documents/ - holds additional documents about this project
 ├── test-code/ - holds incomplete test code that may still be useful
-├── parse_table.ipynb - jupyter notebook that walks through the OCR process.
 ├── parse_table.py - the primary script for this project
 ├── parse_table.log - logs the console output while running parse_table.py
 ├── parser.py - holds utility code used by parse_table.py
