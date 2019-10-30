@@ -21,7 +21,7 @@ numpy==1.17.0
 opencv-python==4.1.0.25
 packaging==19.1
 pandas==0.25.0
-Pillow==6.1.0
+Pillow==6.2.0
 prov==1.5.3
 pydot==1.4.1
 pydotplus==2.0.2
