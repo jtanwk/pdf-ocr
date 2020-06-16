@@ -46,6 +46,8 @@ $ py -m pip install -r requirements.txt
 
 ## Results
 
+[From left to right: input PDF with table, preprocessed image with detected boxes highlighted in red, output CSV with detected text](example.png)
+
 The program reads any PDF files in the `01_data` folder.
 
 It will also create one folder per PDF file in the `02_output` folder. Each folder will contain one CSV and one image per page in the PDF.
@@ -76,8 +78,6 @@ root
 ├── 01_data/ - holds input PDF to be parsed
 ├── 02_output/ - where output CSVs are saved (created by running parse_table.py)
     └── errors.csv - lists any errors occured while running parse_table.py
-├── documents/ - holds additional documents about this project
-├── test-code/ - holds incomplete test code that may still be useful
 ├── parse_table.py - the primary script for this project
 ├── parse_table.log - logs the console output while running parse_table.py
 ├── parser.py - holds utility code used by parse_table.py
