@@ -46,7 +46,8 @@ $ py -m pip install -r requirements.txt
 
 ## Results
 
-![From left to right: input PDF with table, preprocessed image with detected boxes highlighted in red, output CSV with detected text](example.png)
+![](example.png)
+*From left to right: (1) input PDF with table, (2) preprocessed image with detected boxes highlighted in red, (3) output CSV with detected text.*
 
 The program reads any PDF files in the `01_data` folder.
 
