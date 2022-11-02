@@ -12,7 +12,7 @@ httplib2==0.19.0
 idna==2.8
 isodate==0.6.0
 jenkspy==0.1.5
-lxml==4.6.5
+lxml==4.9.1
 networkx==2.3
 neurdflib==5.0.0.post1
 nibabel==2.5.0
