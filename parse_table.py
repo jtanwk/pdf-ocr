@@ -9,6 +9,8 @@ import itertools
 import logging
 import os
 import shutil
+import multiprocessing as mp
+from functools import partial
 
 import pandas as pd
 
@@ -72,6 +74,12 @@ def main(data_dir, output_dir):
         error = parse_document(data_dir, output_dir, pdf)
         if error:
             errors.append(error)
+
+    # num_processes = mp.cpu_count()
+    # with mp.Pool(processes=num_processes) as pool:
+    #     func = partial(parse_document, data_dir, output_dir)
+    #     results = pool.map(func, pdf_list)
+    #     errors = list(filter(None, results))
 
     # Export errors to CSV if they exlist
     if len(errors) > 0:

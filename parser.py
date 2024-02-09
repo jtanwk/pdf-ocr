@@ -56,6 +56,9 @@ class Document:
         zoom_factor = 3
         for i in range(len(doc)):
             # Load page and get pixmap
+            if doc.is_closed or doc.isEncrypted:
+                logger.info("   PDF file is encrypted")
+                return None
             page = doc.load_page(i)
             pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom_factor, zoom_factor))
 
@@ -98,6 +101,13 @@ class Document:
             logger.debug(f"Reading page {idx + 1} out of {len(self.pages)}")
 
             try:
+
+                # page = Page(i, idx + 1, self.doc_name, self.output_dir)
+                # if not page.check_for_table():
+                #     continue
+                # page.parse_page()
+
+
                 # Get headers if first page, else use existing headers
                 if not idx:
                     page = Page(i, idx + 1, self.doc_name, self.output_dir)
@@ -132,6 +142,9 @@ class Document:
         if len(error_list) > 0:
             logger.info(f"    {self.doc_name} ran into errors while parsing.")
             return error_list
+        elif not self.page_dfs:
+            logger.info(f"    No table found in pdf")
+            return None
         else:
             logger.info(f"    Completed parsing {self.doc_name} with no errors.")
             self.doc_data = pd.concat(self.page_dfs, ignore_index=True)
@@ -473,10 +486,14 @@ class Page:
 
     def parse_page(self):
 
-        self.preprocess_image() \
-            .detect_table() \
-            .get_contours() \
-            .draw_contours() \
+        # self.preprocess_image() \
+        #     .detect_table() \
+        #     .get_contours() \
+        #     .draw_contours() \
+        #     .read_cells() \
+        #     .reconstruct_table()
+
+        self.draw_contours() \
             .read_cells() \
             .reconstruct_table()
         # .export_data()
