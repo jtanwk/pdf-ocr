@@ -9,8 +9,6 @@ import itertools
 import logging
 import os
 import shutil
-import multiprocessing as mp
-from functools import partial
 
 import pandas as pd
 

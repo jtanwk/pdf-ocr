@@ -31,7 +31,6 @@ class Document:
         self.doc_dir = doc_dir
         self.output_dir = output_dir
         self.pages = []
-        self.headers = None
         self.page_dfs = []
         self.doc_data = None
 
@@ -75,19 +74,35 @@ class Document:
 
         return None
 
-    def export_data(self):
+    def export_data(self, tables):
         """
-        Exports the fully-shaped data in self.doc_data to output_dir
+        Exports each table in self.tables to separate CSV files in output_dir
         """
 
-        output_name = self.doc_name + ".csv"
-        logger.debug(f"Writing table to file: {output_name}")
+        logger.debug("Exporting data to CSV files...")
 
-        self.doc_data.to_csv(os.path.join(
-            self.output_dir, self.doc_name, output_name
-        ), index=False)
+        for i, table_df in enumerate(tables):
+            csv_filename = f"{self.doc_name}_table_{i + 1}.csv"
+            table_df.reset_index(drop=True, inplace=True)
+            # self.doc_data = pd.concat(self.page_dfs, ignore_index=True)
+            table_df.to_csv(os.path.join(self.output_dir, self.doc_name, csv_filename), index=False)
+            logger.info(f"    Exported table {i + 1} to {csv_filename}")
 
-        return self
+        logger.info(f"Completed exporting data from {self.doc_name} with no errors.")
+
+    def merge_tables(self, page):
+        tables = page.tables
+        # Merge tables with the last table from self.page_dfs if any column matches
+        if self.page_dfs:
+            last_table = self.page_dfs[-1]
+            for table_df in tables:
+                if any(col in last_table.columns for col in table_df.columns):
+                    merged_table = pd.concat([last_table, table_df], ignore_index=True)
+                    self.page_dfs[-1] = merged_table
+                else:
+                    self.page_dfs.append(table_df)
+        else:
+            self.page_dfs.extend(tables)
 
     def parse_doc(self):
 
@@ -101,31 +116,12 @@ class Document:
             logger.debug(f"Reading page {idx + 1} out of {len(self.pages)}")
 
             try:
+                page = Page(i, idx + 1, self.doc_name, self.output_dir)
+                if not page.check_for_table():
+                    continue
+                page.parse_page()
 
-                # page = Page(i, idx + 1, self.doc_name, self.output_dir)
-                # if not page.check_for_table():
-                #     continue
-                # page.parse_page()
-
-
-                # Get headers if first page, else use existing headers
-                if not idx:
-                    page = Page(i, idx + 1, self.doc_name, self.output_dir)
-                    if not page.check_for_table():
-                        continue
-                    page.parse_page()
-                    self.headers = page.get_headers()
-                elif idx and not self.headers:
-                    raise Exception('No headers detected on first page.')
-                else:
-                    page = Page(i, idx + 1, self.doc_name, self.output_dir,
-                                headers=self.headers)
-                    if not page.check_for_table():
-                        continue
-                    page.parse_page()
-
-                # Append dataframe of parsed data to self.page_dfs
-                self.page_dfs.append(page.get_data())
+                self.merge_tables(page)
 
             except Exception as e:
                 logger.info(f"    ERROR IN {self.doc_name}, page {idx + 1}: {str(e)}")
@@ -147,19 +143,17 @@ class Document:
             return None
         else:
             logger.info(f"    Completed parsing {self.doc_name} with no errors.")
-            self.doc_data = pd.concat(self.page_dfs, ignore_index=True)
-            self.export_data()
+            self.export_data(self.page_dfs)
             return None
 
 
 class Page:
 
-    def __init__(self, img, page_num, doc_name, output_dir, headers=None):
+    def __init__(self, img, page_num, doc_name, output_dir):
         self.img = img
         self.page_num = page_num
         self.doc_name = doc_name
         self.output_dir = output_dir
-        self.headers = headers
 
         # Attributes to be assigned later
         self.img_gray = None
@@ -355,34 +349,51 @@ class Page:
         return self
 
     @staticmethod
-    def calculate_dimensions(df, headers):
+    def calculate_dimensions(table):
         """
         Given a dataframe with (x, y, w, h) data, uses large gaps in coordinates
         to estimate the number of rows and columns in the data.
         """
 
+        # Add the last table
+
         # Calculate number of rows
         num_rows = 1
-        df = df.sort_values(by=['y', 'x'])
+        table = table.sort_values(by=['y', 'x'])
+        for i in range(len(table)):
+            if i == 0:
+                continue
+            elif table.iloc[i]['y'] > (table.iloc[i - 1]['y'] + 0.8 * table.iloc[i - 1]['h']):
+                num_rows += 1
+
+        # Calculate number of columns
+        num_cols = 1
+        table = table.sort_values(by=['x', 'y'])
+        for i in range(len(table)):
+            if i == 0:
+                continue
+            elif table.iloc[i]['x'] > (table.iloc[i - 1]['x'] + 0.8 * table.iloc[i - 1]['w']):
+                num_cols += 1
+        return num_rows, num_cols
+
+    @staticmethod
+    def split_into_tables(df):
+        # Find gaps between tables
+        table_gaps = []
+        df = df.sort_values(by=['y'])
         for i in range(len(df)):
             if i == 0:
                 continue
-            elif df.iloc[i]['y'] > (df.iloc[i - 1]['y'] + 0.8 * df.iloc[i - 1]['h']):
-                num_rows += 1
+            elif df.iloc[i]['y'] > (df.iloc[i - 1]['y'] + 1.5 * df.iloc[i - 1]['h']):
+                table_gaps.append(i)
 
-        if headers:
-            num_cols = len(headers)
-        else:
-            # Calculate number of columns
-            num_cols = 1
-            df = df.sort_values(by=['x', 'y'])
-            for i in range(len(df)):
-                if i == 0:
-                    continue
-                elif df.iloc[i]['x'] > (df.iloc[i - 1]['x'] + 0.8 * df.iloc[i - 1]['w']):
-                    num_cols += 1
-
-        return num_rows, num_cols
+        tables = []
+        start = 0
+        for end in table_gaps:
+            tables.append(df.iloc[start:end])
+            start = end
+        tables.append(df.iloc[start:])
+        return tables
 
     def reconstruct_table(self):
         """
@@ -396,71 +407,63 @@ class Page:
         """
 
         logger.debug("    Parsing data into table...")
+        tables = []
 
         # Split xywh into x, y, w, h
         df = self.text_data
         df[['x', 'y', 'w', 'h']] = pd.DataFrame(df['xywh'].tolist(), index=df.index)
         df = df.drop('xywh', axis=1)
 
-        # Estimate number of rows and columns
-        num_rows, num_cols = Page.calculate_dimensions(df, headers=self.headers)
-        logger.debug(f"        {num_rows} rows and {num_cols} columns detected.")
+        # Estimate number of rows and columns for each table
+        tables_df = Page.split_into_tables(df)
+        for index, table_df in enumerate(tables_df, 1):
 
-        # Use Jenks optimization to get natural breaks in y-coordinates, then
-        # assign row number based on natural breaks
-        row_breaks = jenkspy.jenks_breaks(df['y'], num_rows)
-        calculate_row_num = lambda y: sum(list(map(lambda x: 1 if x < y else 0, row_breaks[1:])))
-        df['row_num'] = df['y'].apply(calculate_row_num)
+            num_rows, num_cols = Page.calculate_dimensions(table_df)
+            logger.debug(f"{num_rows} rows and {num_cols} columns detected.")
 
-        # Repeat for columns
-        col_breaks = jenkspy.jenks_breaks(df['x'], num_cols)
-        calculate_col_num = lambda y: sum(list(map(lambda x: 1 if x < y else 0, col_breaks[1:])))
-        df['col_num'] = df['x'].apply(calculate_col_num)
+            # Use Jenks optimization to get natural breaks in y-coordinates, then
+            # assign row number based on natural breaks
+            row_breaks = jenkspy.jenks_breaks(table_df['y'], num_rows)
+            calculate_row_num = lambda y: sum(list(map(lambda x: 1 if x < y else 0, row_breaks[1:])))
+            table_df['row_num'] = table_df['y'].apply(calculate_row_num)
 
-        # Recalculate column assignments if there are overlapping cell coords
-        # but do not recalculate if headers are already present
-        if num_rows * num_cols < len(df) and not self.headers:
-            while num_rows * num_cols < len(df):
-                num_cols += 1
-            logger.debug(f"        Adjusting estimate to {num_rows} rows and {num_cols} columns.")
-            col_breaks = jenkspy.jenks_breaks(df['x'], num_cols)
+            # Repeat for columns
+            col_breaks = jenkspy.jenks_breaks(table_df['x'], num_cols)
             calculate_col_num = lambda y: sum(list(map(lambda x: 1 if x < y else 0, col_breaks[1:])))
-            df['col_num'] = df['x'].apply(calculate_col_num)
+            table_df['col_num'] = table_df['x'].apply(calculate_col_num)
 
-        # Fill in missing columns if there are merged cells
-        if num_rows * num_cols > len(df):
-            df = df \
-                .set_index(['row_num', 'col_num']) \
-                .reindex(pd.MultiIndex.from_tuples(
-                set(itertools.product(df['row_num'], df['col_num'])))
-            ) \
-                .reset_index() \
-                .rename({'level_0': 'row_num', 'level_1': 'col_num'}, axis=1) \
-                .sort_values(by=['row_num', 'col_num']) \
-                .fillna(0)
-        else:
-            df = df.sort_values(by=['row_num', 'col_num'])
+            # Recalculate column assignments if there are overlapping cell coords
+            if num_rows * num_cols < len(table_df):
+                while num_rows * num_cols < len(table_df):
+                    num_cols += 1
+                logger.debug(f"Adjusting estimate to {num_rows} rows and {num_cols} columns.")
+                col_breaks = jenkspy.jenks_breaks(table_df['x'], num_cols)
+                calculate_col_num = lambda y: sum(list(map(lambda x: 1 if x < y else 0, col_breaks[1:])))
+                table_df['col_num'] = table_df['x'].apply(calculate_col_num)
 
-        # Reshape using row and column assignments
-        df = df.pivot(index='row_num', columns='col_num', values='text')
-
-        # Rename columns with first row, drop first row
-        if self.headers:
-            df.columns = self.headers
-
-            # Check if headers are identical to first row (i.e. headers repeat)
-            if all(df.columns == df.iloc[0].tolist()):
-                df = df.iloc[1:].reset_index(drop=True)
+            # Fill in missing columns if there are merged cells
+            if num_rows * num_cols > len(table_df):
+                table_df = table_df \
+                    .set_index(['row_num', 'col_num']) \
+                    .reindex(pd.MultiIndex.from_tuples(
+                    set(itertools.product(table_df['row_num'], table_df['col_num'])))
+                ) \
+                    .reset_index() \
+                    .rename({'level_0': 'row_num', 'level_1': 'col_num'}, axis=1) \
+                    .sort_values(by=['row_num', 'col_num']) \
+                    .fillna(0)
             else:
-                pass
+                table_df = table_df.sort_values(by=['row_num', 'col_num'])
 
-        else:
-            df.columns = df.iloc[0]
-            df = df.iloc[1:].reset_index(drop=True)
-            self.headers = df.columns.tolist()
+            # Reshape using row and column assignments
+            table_df = table_df.pivot(index='row_num', columns='col_num', values='text')
+            table_df.columns = table_df.iloc[0]
+            table_df = table_df.iloc[1:].reset_index(drop=True)
 
-        # Save to object
-        self.text_data = df
+            tables.append(table_df)
+
+        # Save tables to object
+        self.tables = tables
 
         return self
 
@@ -478,11 +481,8 @@ class Page:
 
         return self
 
-    def get_headers(self):
-        return self.headers
-
     def get_data(self):
-        return self.text_data
+        return self.tables
 
     def parse_page(self):
 
